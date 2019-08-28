@@ -1,0 +1,63 @@
+import tensorflow as tf
+from sklearn.datasets import load_digits
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelBinarizer
+#load data
+digits = load_digits()
+X = digits.data #加载0-9数字的图片
+y = digits.target
+y = LabelBinarizer().fit_transform(y) #one_hot
+#  train_test_split函数用于将矩阵随机划分为训练子集和测试子集，
+# 并返回划分好的训练集测试集样本和训练集测试集标签。
+# X为划分的样本特征集
+# y被划分的样本标签
+X_train,X_test,y_train,y_test = train_test_split(X,y,test_size=.3)
+
+
+def add_layer(inputs,in_size,out_size,layer_name,activation_funciton=None):
+
+    Weights = tf.Variable(tf.random_normal([in_size,out_size]))
+    biases = tf.Variable(tf.zeros([1,out_size]) + 0.1)
+    Wx_plus_b = tf.matmul(inputs,Weights) + biases
+    Wx_plus_b = tf.nn.dropout(Wx_plus_b,keep_prob)
+    if activation_funciton is None:
+        outputs = Wx_plus_b
+    else:
+        outputs = activation_funciton(Wx_plus_b)
+
+    tf.summary.histogram(layer_name + '/outputs',outputs) #用来显示直方图信息,一般用来显示训练过程中变量的分布情况
+                                                        #第一个参数是图表的名称, 第二个参数是图表要记录的变量
+    return outputs
+
+
+#define placeholder
+keep_prob = tf.placeholder(tf.float32)#保持多少的结果不被drop掉
+xs = tf.placeholder(tf.float32,[None,64]) #8*8
+ys = tf.placeholder(tf.float32,[None,10])
+
+#add output layer
+l1 = add_layer(xs,64,50,'l1',activation_funciton=tf.nn.tanh)
+prediction = add_layer(l1,50,10,'l2',activation_funciton=tf.nn.softmax)
+
+#the loss between prediction and data
+cross_entropy = tf.reduce_mean(-tf.reduce_sum(ys*tf.log(prediction),reduction_indices=[1]))
+tf.summary.scalar('loss',cross_entropy) #用来显示标量信息,一般在画loss,accuary时会用到这个函数。
+
+train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
+
+
+with tf.Session() as sess:
+    merged = tf.summary.merge_all() #将所有summary全部保存到磁盘
+    train_writer = tf.summary.FileWriter('logs/train',sess.graph)#指定一个文件用来保存图
+    test_writer = tf.summary.FileWriter('logs/test',sess.graph)
+
+    sess.run(tf.global_variables_initializer())
+
+    for i in range(500):
+        sess.run(train_step,feed_dict={xs:X_train,ys:y_train,keep_prob:0.5})
+        if i % 50 == 0:
+            #record loss
+            train_result = sess.run(merged,feed_dict={xs:X_train,ys:y_train,keep_prob:1})
+            test_result = sess.run(merged,feed_dict={xs:X_test,ys:y_test,keep_prob:1})
+            train_writer.add_summary(train_result,i)#将训练过程数据保存在filewriter指定的文件中
+            test_writer.add_summary(test_result,i)
